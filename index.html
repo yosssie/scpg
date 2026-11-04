@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#6558d3" />
+  <title>スーパーけいさんれんしゅうゲーム</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="effect-layer" class="effect-layer" aria-hidden="true"></div>
+  <main class="app-shell">
+    <header class="app-header">
+      <a class="brand" href="#" id="home-link" aria-label="ホームへもどる"><span class="brand-mark">S</span><span>スーパーけいさんれんしゅうゲーム</span></a>
+      <div class="header-actions">
+        <label style="font-size: 0.85rem; font-weight: bold;">
+          <input type="checkbox" id="furigana-toggle" checked /> ふりがな
+        </label>
+        <button class="icon-button" id="settings-button" type="button" aria-label="せっていをひらく">⚙</button>
+      </div>
+    </header>
+
+    <section id="home-screen" class="screen active" aria-labelledby="home-title">
+      <div class="hero"><span class="hero-star">★</span><p class="eyebrow">スーパーけいさんれんしゅうゲーム</p><h1 id="home-title">きょうは<br>なにを れんしゅうする？</h1><p>できるところから、たのしく はじめよう！</p></div>
+      <div class="mode-grid">
+        <button class="mode-card practice" data-mode="practice" type="button"><span class="mode-icon">✏️</span><strong>れんしゅう</strong><small>1もんずつ こたえあわせ</small></button>
+        <button class="mode-card test" data-mode="test" type="button"><span class="mode-icon">🏅</span><strong>テスト</strong><small>さいごに けっかを みる</small></button>
+        <button class="mode-card cards" data-mode="cards" type="button"><span class="mode-icon">🃏</span><strong>けいさんカード</strong><small>ぜんぶできるまで チャレンジ</small></button>
+      </div>
+      <section id="home-learning-stats" class="learning-stats home-learning-stats" aria-live="polite"></section>
+    </section>
+
+    <section id="game-screen" class="screen" aria-live="polite">
+      <div class="game-top"><button class="back-button" id="quit-button" type="button">← やめる</button><div id="progress-label"></div></div>
+      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+      <div class="game-card">
+        <p id="game-message" class="game-message">こたえを いれてね</p>
+        <div id="question" class="question" aria-label="けいさんもんだい"></div>
+        <form id="answer-form" autocomplete="off">
+          <div class="answer-row"><input id="answer-input" inputmode="numeric" pattern="[0-9]*" type="text" aria-label="こたえ" autofocus /><button class="mic-button" id="mic-button" type="button" aria-label="声でこたえる">🎙️</button></div>
+          <div class="number-keypad" aria-label="すうじの ボタン">
+            <button type="button" data-number-key="1">1</button><button type="button" data-number-key="2">2</button><button type="button" data-number-key="3">3</button><button type="button" data-number-key="4">4</button><button type="button" data-number-key="5">5</button>
+            <button type="button" data-number-key="6">6</button><button type="button" data-number-key="7">7</button><button type="button" data-number-key="8">8</button><button type="button" data-number-key="9">9</button><button type="button" data-number-key="0">0</button>
+            <button type="button" class="number-delete" data-number-delete="true" aria-label="1もじ けす"><span>け</span><span>す</span></button>
+          </div>          <button id="submit-button" class="primary-button" type="submit">こたえる</button>
+        </form>
+        <div id="card-judge-controls" class="card-judge-controls" hidden aria-label="おとなの はんてい">
+          <button id="card-wrong-button" class="card-judge-button card-wrong-button" type="button">×<span>もういちど</span></button>
+          <button id="card-correct-button" class="card-judge-button card-correct-button" type="button">○<span>せいかい</span></button>
+        </div>        <p class="voice-hint" id="voice-hint">すうじをにゅうりょくするか、まいくでこたえられるよ</p>
+      </div>
+    </section>
+
+    <section id="result-screen" class="screen" aria-live="polite">
+      <div id="celebration" class="celebration">🌟</div>
+      <p class="eyebrow" id="result-kicker">おつかれさま！</p>
+      <h1 id="result-title">よく がんばったね！</h1>
+      <div id="result-summary" class="result-summary"></div>
+      <div id="result-action" class="result-action"></div>
+      <section id="question-list" class="question-list" aria-live="polite"></section>
+      <button id="home-button" class="secondary-button" type="button">ホームへ もどる</button>
+    </section>
+  </main>
+
+  <dialog id="settings-dialog">
+    <form method="dialog" id="settings-form">
+      <div class="dialog-heading"><h2 id="settings-title">もんだいの せってい</h2><button class="icon-button" id="close-settings-button" type="button" aria-label="とじる">×</button></div>
+      <p id="settings-description" class="settings-description">もんだいを えらんでから はじめよう</p><fieldset id="operation-settings"><legend>けいさん</legend><label><input type="checkbox" name="operation" value="addition" checked> たしざん</label><label><input type="checkbox" name="operation" value="subtraction" checked> ひきざん</label></fieldset>
+      <fieldset id="range-settings"><legend>むずかしさ</legend><label><input type="radio" name="range" value="single" checked> 1けた・こたえも 1けた</label><label><input type="radio" name="range" value="singleTwoDigit"> 1けた・こたえは 2けたまで</label><label><input type="radio" name="range" value="twoDigit"> 2けたの けいさん（こたえは 2けたまで）</label></fieldset>
+      <fieldset id="count-settings"><legend>もんだいの かず</legend><label><input type="radio" name="questionCount" value="10" checked> 10もん</label><label><input type="radio" name="questionCount" value="20"> 20もん</label></fieldset>
+      <fieldset id="card-play-settings" hidden><legend>すすめかた</legend><label><input type="radio" name="cardPlayMode" value="solo" checked> ひとりで がんばる</label><label><input type="radio" name="cardPlayMode" value="adult"> おとなが みる</label></fieldset>
+      <button class="primary-button" value="default" id="save-settings" type="submit">スタート</button>
+    </form>
+  </dialog>
+  <script src="ruby-dictionary.js"></script>
+  <script src="writing.js"></script>
+  <script src="app.js"></script>
+</body>
+</body>
+</html>
