@@ -37,7 +37,7 @@
         <p id="game-message" class="game-message">こたえを いれてね</p>
         <div id="question" class="question" aria-label="けいさんもんだい"></div>
         <form id="answer-form" autocomplete="off">
-          <div class="answer-row"><input id="answer-input" inputmode="numeric" pattern="[0-9]*" type="text" aria-label="こたえ" autofocus /><button class="mic-button" id="mic-button" type="button" aria-label="声でこたえる">🎙️</button></div>
+          <div class="answer-row"><input id="answer-input" inputmode="text" type="text" aria-label="こたえ" /><button class="mic-button" id="mic-button" type="button" aria-label="声でこたえる">🎙️</button></div>
           <div class="number-keypad" aria-label="すうじの ボタン">
             <button type="button" data-number-key="1">1</button><button type="button" data-number-key="2">2</button><button type="button" data-number-key="3">3</button><button type="button" data-number-key="4">4</button><button type="button" data-number-key="5">5</button>
             <button type="button" data-number-key="6">6</button><button type="button" data-number-key="7">7</button><button type="button" data-number-key="8">8</button><button type="button" data-number-key="9">9</button><button type="button" data-number-key="0">0</button>
@@ -68,6 +68,7 @@
       <p id="settings-description" class="settings-description">もんだいを えらんでから はじめよう</p><fieldset id="operation-settings"><legend>けいさん</legend><label><input type="checkbox" name="operation" value="addition" checked> たしざん</label><label><input type="checkbox" name="operation" value="subtraction" checked> ひきざん</label></fieldset>
       <fieldset id="range-settings"><legend>むずかしさ</legend><label><input type="radio" name="range" value="single" checked> 1けた・こたえも 1けた</label><label><input type="radio" name="range" value="singleTwoDigit"> 1けた・こたえは 2けたまで</label><label><input type="radio" name="range" value="twoDigit"> 2けたの けいさん（こたえは 2けたまで）</label></fieldset>
       <fieldset id="count-settings"><legend>もんだいの かず</legend><label><input type="radio" name="questionCount" value="10" checked> 10もん</label><label><input type="radio" name="questionCount" value="20"> 20もん</label></fieldset>
+      <fieldset id="voice-mode-settings"><legend>こえでの こたえかた</legend><label><input type="radio" name="voiceMode" value="answer" checked> こたえだけ</label><label><input type="radio" name="voiceMode" value="equation"> しきと こたえ</label></fieldset>
       <fieldset id="card-play-settings" hidden><legend>すすめかた</legend><label><input type="radio" name="cardPlayMode" value="solo" checked> ひとりで がんばる</label><label><input type="radio" name="cardPlayMode" value="adult"> おとなが みる</label></fieldset>
       <button class="primary-button" value="default" id="save-settings" type="submit">スタート</button>
     </form>
