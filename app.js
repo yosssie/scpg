@@ -14,6 +14,7 @@ let pendingMode = null;
 let shootingStarTimer = null;
 let cardTable = [];
 let cardTableLoadPromise = null;
+let cardTimerInterval = null;
 const LEARNING_STATS_KEY = "scpg-learning-stats";
 function todayKey() {
   const now = new Date();
@@ -50,7 +51,7 @@ function renderLearningStats(stats) {
   document.querySelectorAll(".learning-stats").forEach((element) => { element.innerHTML = content; });
 }
 
-function showScreen(id) { document.querySelectorAll(".screen").forEach((screen) => screen.classList.remove("active")); $(id).classList.add("active"); if (id !== "#result-screen") stopShootingStars(); if (id === "#home-screen") renderLearningStats(loadLearningStats()); }
+function showScreen(id) { document.querySelectorAll(".screen").forEach((screen) => screen.classList.remove("active")); $(id).classList.add("active"); if (id !== "#result-screen") stopShootingStars(); if (id === "#home-screen") { stopCardTimer(); renderLearningStats(loadLearningStats()); } }
 function randomInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 function createQuestion(operation) {
   // 2けた設定では、足し算は答えが99以下、引き算はマイナスにならない問題だけを作る。
@@ -72,11 +73,13 @@ function createQuestion(operation) {
 function answerOf(question) { return operationInfo[question.operation].calculate(question.a, question.b); }
 function questionText(question) { return `${question.a} ${operationInfo[question.operation].symbol} ${question.b}`; }
 function setupGame(mode) {
+  stopCardTimer();
   const questions = mode === "cards" ? createCards(settings.cardSet) : Array.from({ length: settings.questionCount }, () => createQuestion(settings.operations[randomInt(0, settings.operations.length - 1)]));
   questions.forEach((question, index) => { question.id = index; });
   game = { mode, originalMode: mode, cardPlayMode: settings.cardPlayMode, sessionId: `${Date.now()}-${Math.random()}`, firstCorrect: undefined, questions, index: 0, answers: [], startedAt: Date.now(), wrongAttempts: 0, streak: 0, isSubmitting: false, awaitingNext: false };
   $("#game-message").textContent = cardMessage() ?? (mode === "test" ? "さいごまで がんばろう！" : "こたえを いれてね");
   showScreen("#game-screen"); renderQuestion();
+  if (mode === "cards") startCardTimer();
 }
 function parseCardTable(csvText) {
   const lines = csvText.replace(/^\uFEFF/, "").trim().split(/\r?\n/);
@@ -145,6 +148,7 @@ function renderQuestion() {
   const question = game.questions[game.index];
   $("#question").textContent = `${questionText(question)} =`;
   $("#progress-label").textContent = game.mode === "cards" ? `${game.index + 1} / ${game.questions.length} まい` : `${game.index + 1} / ${game.questions.length} もん`;
+  $("#card-timer").hidden = game.mode !== "cards";
   $("#progress-fill").style.width = `${(game.index / game.questions.length) * 100}%`;
   const adultCards = game.mode === "cards" && game.cardPlayMode === "adult";
   $("#answer-form").hidden = adultCards;
@@ -164,7 +168,7 @@ function judgeCard(isCorrect) {
   if (!game || game.mode !== "cards" || game.cardPlayMode !== "adult" || game.isSubmitting) return;
   setAnswerLocked(true);
   if (!isCorrect) { game.wrongAttempts += 1; game.streak = 0; feedback("もういちど、ゆっくり いってみよう", "encourage"); setTimeout(() => setAnswerLocked(false), 250); return; }
-  game.streak += 1; addCorrectToTotal(); game.correctCelebrations = (game.correctCelebrations ?? 0) + 1; showCorrectEffect(game.correctCelebrations, game.streak); feedback("せいかい！", "correct"); setTimeout(nextQuestion, 450);
+  game.streak += 1; addCorrectToTotal(); game.correctCelebrations = (game.correctCelebrations ?? 0) + 1; showCorrectEffect(game.correctCelebrations, game.streak); feedback("せいかい！", "correct"); stopCardTimerForFinalAnswer(); setTimeout(nextQuestion, 450);
 }
 function submitAnswer(event) {
   event.preventDefault(); if (!game) return;
@@ -179,7 +183,7 @@ function submitAnswer(event) {
   const isCorrect = equationMode ? isCorrectSpokenEquation(raw, question) : Number(raw) === answerOf(question);
   if (game.mode === "cards") {
     if (!isCorrect) { game.wrongAttempts += 1; game.streak = 0; feedback("おしい！ もういちど やってみよう", "incorrect"); setTimeout(() => { setAnswerLocked(false); }, 450); return; }
-    game.streak += 1; addCorrectToTotal(); game.correctCelebrations = (game.correctCelebrations ?? 0) + 1; showCorrectEffect(game.correctCelebrations, game.streak); feedback("せいかい！", "correct"); setTimeout(nextQuestion, 450); return;
+    game.streak += 1; addCorrectToTotal(); game.correctCelebrations = (game.correctCelebrations ?? 0) + 1; showCorrectEffect(game.correctCelebrations, game.streak); feedback("せいかい！", "correct"); stopCardTimerForFinalAnswer(); setTimeout(nextQuestion, 450); return;
   }
   game.answers.push({ question: { ...question }, given: equationMode ? (isCorrect ? answerOf(question) : raw) : Number(raw), correct: isCorrect });
   if (game.mode === "practice" || game.mode === "review") {
@@ -246,8 +250,29 @@ function startShootingStars() {
 }
 function feedback(text, className) { const el = $("#game-message"); el.textContent = text; el.className = `game-message ${className}`; if (className === "incorrect") { $(".game-card").classList.add("shake"); setTimeout(() => $(".game-card").classList.remove("shake"), 350); } }
 function nextQuestion() { game.index += 1; if (game.index >= game.questions.length) finishGame(); else { $("#game-message").className = "game-message"; $("#game-message").textContent = cardMessage() ?? "こたえを いれてね"; renderQuestion(); } }
-function formatTime(milliseconds) { const seconds = Math.max(1, Math.round(milliseconds / 1000)); return `${Math.floor(seconds / 60)}ふん${String(seconds % 60).padStart(2, "0")}びょう`; }
+function formatTime(milliseconds) { const seconds = Math.max(1, Math.floor(milliseconds / 1000)); return `${Math.floor(seconds / 60)}ふん${String(seconds % 60).padStart(2, "0")}びょう`; }
+function updateCardTimer() {
+  if (game?.mode !== "cards") return;
+  const seconds = Math.floor(((game.completedAt ?? Date.now()) - game.startedAt) / 1000);
+  $("#card-timer").textContent = `じかん：${Math.floor(seconds / 60)}ふん${String(seconds % 60).padStart(2, "0")}びょう`;
+}
+function stopCardTimerForFinalAnswer() {
+  if (game?.mode !== "cards" || game.index !== game.questions.length - 1) return;
+  game.completedAt = Date.now();
+  updateCardTimer();
+  stopCardTimer();
+}
+function stopCardTimer() {
+  if (cardTimerInterval !== null) clearInterval(cardTimerInterval);
+  cardTimerInterval = null;
+}
+function startCardTimer() {
+  stopCardTimer();
+  updateCardTimer();
+  cardTimerInterval = setInterval(updateCardTimer, 1000);
+}
 function finishGame() {
+  stopCardTimer();
   $("#progress-fill").style.width = "100%"; showScreen("#result-screen");
   if (game.mode === "cards") return showCardResult();
   // 復習では、最初の10問の回答記録を今回の回答で更新してから集計する。
@@ -285,11 +310,11 @@ function showQuestionList(answers) {
 }
 function showCardResult() {
   $("#question-list").innerHTML = "";
-  const elapsed = Date.now() - game.startedAt;
+  const elapsed = (game.completedAt ?? Date.now()) - game.startedAt;
   const stats = loadLearningStats(); stats.cardLastTime = elapsed; saveLearningStats(stats);
-  const key = "scpg-card-best"; const oldBest = Number(localStorage.getItem(key) || 0); const isBest = !oldBest || elapsed < oldBest; if (isBest) localStorage.setItem(key, String(elapsed));
+  const key = "scpg-card-best"; const oldBest = Number(localStorage.getItem(key) || 0); if (!oldBest || elapsed < oldBest) localStorage.setItem(key, String(elapsed));
   $("#result-kicker").textContent = "けいさんカード かんりょう！"; $("#result-title").textContent = "ぜんぶ できたね！";
-  $("#result-summary").innerHTML = `<strong>きろく：${formatTime(elapsed)}</strong><br><span>${game.questions.length}まい ぜんぶ せいかい！</span>${isBest ? `<br><span class="record">${oldBest ? "さいこうきろく こうしん！" : "はじめての きろく！"}</span>` : `<br><small>さいこうきろく：${formatTime(oldBest)}</small>`}`;
+  $("#result-summary").innerHTML = `<strong>かかったじかん：${formatTime(elapsed)}</strong><br><span>${game.questions.length}まい ぜんぶ せいかい！</span>`;
   setTimeout(startShootingStars, 150);
   $("#result-action").innerHTML = `<button class="primary-button" id="again-button" type="button">もういちど チャレンジ</button>`; $("#again-button").addEventListener("click", () => setupGame("cards"));
 }
