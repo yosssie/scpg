@@ -1,5 +1,5 @@
 const $ = (selector) => document.querySelector(selector);
-const settings = { operations: ["addition", "subtraction"], range: "single", questionCount: 10, cardPlayMode: "solo" };
+const settings = { operations: ["addition", "subtraction"], range: "single", questionCount: 10, cardPlayMode: "solo", voiceMode: "answer" };
 const operationInfo = {
   addition: { symbol: "+", calculate: (a, b) => a + b },
   subtraction: { symbol: "−", calculate: (a, b) => a - b },
@@ -100,12 +100,14 @@ function renderQuestion() {
   $("#progress-fill").style.width = `${(game.index / game.questions.length) * 100}%`;
   const adultCards = game.mode === "cards" && game.cardPlayMode === "adult";
   $("#answer-form").hidden = adultCards;
+  $(".number-keypad").hidden = settings.voiceMode === "equation" && !adultCards;
+  $(".number-keypad").hidden = settings.voiceMode === "equation" && !adultCards;
   $("#card-judge-controls").hidden = !adultCards;
   $("#voice-hint").hidden = adultCards;
   setAnswerLocked(false);
   game.awaitingNext = false;
   $("#submit-button").textContent = "こたえる";
-  $("#answer-input").value = ""; if (!adultCards) $("#answer-input").focus();
+  $("#answer-input").value = "";
 }
 function cardMessage() {
   if (game?.mode !== "cards") return null;
@@ -121,14 +123,18 @@ function submitAnswer(event) {
   event.preventDefault(); if (!game) return;
   if (game.awaitingNext) { game.awaitingNext = false; game.isSubmitting = false; nextQuestion(); return; }
   if (game.isSubmitting) return;
-  const raw = $("#answer-input").value.trim(); if (!/^\d+$/.test(raw)) { feedback("すうじを いれてね", "incorrect"); return; }
+  const raw = $("#answer-input").value.trim();
+  const question = game.questions[game.index];
+  const equationMode = settings.voiceMode === "equation" && game.mode !== "cards";
+  if (!equationMode && !/^\d+$/.test(raw)) { feedback("すうじを いれてね", "incorrect"); return; }
+  if (equationMode && !raw) { feedback("しきと こたえを いってね", "incorrect"); return; }
   setAnswerLocked(true);
-  const question = game.questions[game.index]; const isCorrect = Number(raw) === answerOf(question);
+  const isCorrect = equationMode ? isCorrectSpokenEquation(raw, question) : Number(raw) === answerOf(question);
   if (game.mode === "cards") {
-    if (!isCorrect) { game.wrongAttempts += 1; game.streak = 0; feedback("おしい！ もういちど やってみよう", "incorrect"); setTimeout(() => { setAnswerLocked(false); $("#answer-input").focus(); }, 450); return; }
+    if (!isCorrect) { game.wrongAttempts += 1; game.streak = 0; feedback("おしい！ もういちど やってみよう", "incorrect"); setTimeout(() => { setAnswerLocked(false); }, 450); return; }
     game.streak += 1; addCorrectToTotal(); game.correctCelebrations = (game.correctCelebrations ?? 0) + 1; showCorrectEffect(game.correctCelebrations, game.streak); feedback("せいかい！", "correct"); setTimeout(nextQuestion, 450); return;
   }
-  game.answers.push({ question: { ...question }, given: Number(raw), correct: isCorrect });
+  game.answers.push({ question: { ...question }, given: equationMode ? (isCorrect ? answerOf(question) : raw) : Number(raw), correct: isCorrect });
   if (game.mode === "practice" || game.mode === "review") {
     game.streak = isCorrect ? game.streak + 1 : 0;
     if (isCorrect) { addCorrectToTotal(); game.correctCelebrations = (game.correctCelebrations ?? 0) + 1; showCorrectEffect(game.correctCelebrations, game.streak); feedback("せいかい！ いいね！", "correct"); setTimeout(nextQuestion, 800); }
@@ -249,7 +255,7 @@ function parseSpokenNumber(transcript) {
     .replace(/〇|零/g, "ぜろ").replace(/一/g, "いち").replace(/二/g, "に").replace(/三/g, "さん")
     .replace(/四/g, "よん").replace(/五/g, "ご").replace(/六/g, "ろく").replace(/七/g, "なな")
     .replace(/八/g, "はち").replace(/九/g, "きゅう").replace(/十/g, "じゅう");
-  const digits = new Map([["ぜろ", 0], ["れい", 0], ["まる", 0], ["いち", 1], ["に", 2], ["さん", 3], ["よん", 4], ["し", 4], ["ご", 5], ["ろく", 6], ["なな", 7], ["しち", 7], ["はち", 8], ["きゅう", 9], ["く", 9]]);
+  const digits = new Map([["ぜろ", 0], ["れい", 0], ["まる", 0], ["いち", 1], ["に", 2], ["さん", 3], ["よん", 4], ["し", 4], ["ご", 5], ["ろく", 6], ["なな", 7], ["しち", 7], ["ひち", 7], ["はち", 8], ["きゅう", 9], ["く", 9]]);
   if (digits.has(normalized)) return digits.get(normalized);
 
   const tenIndex = normalized.indexOf("じゅう");
@@ -261,6 +267,24 @@ function parseSpokenNumber(transcript) {
   if (tens === undefined || tens === 0 || ones === undefined) return null;
   const result = tens * 10 + ones;
   return result <= 99 ? result : null;
+}
+function normalizeSpeechText(text) {
+  return text.trim().toLowerCase().replace(/[\s、。．,]/g, "").replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xFEE0))
+    .replace(/〇|零/g, "ぜろ").replace(/一/g, "いち").replace(/二/g, "に").replace(/三/g, "さん").replace(/四/g, "よん")
+    .replace(/五/g, "ご").replace(/六/g, "ろく").replace(/七/g, "なな").replace(/八/g, "はち").replace(/九/g, "きゅう").replace(/十/g, "じゅう");
+}
+function spokenNumberVariants(number) {
+  const digits = [["ぜろ"], ["いち"], ["に"], ["さん"], ["よん", "し"], ["ご"], ["ろく"], ["なな", "しち", "ひち"], ["はち"], ["きゅう", "く"]];
+  if (number < 10) return [...digits[number], String(number)];
+  const tens = Math.floor(number / 10), ones = number % 10;
+  const tenWords = tens === 1 ? ["じゅう"] : digits[tens].map((word) => `${word}じゅう`);
+  return [...(ones === 0 ? tenWords : tenWords.flatMap((prefix) => digits[ones].map((word) => prefix + word))), String(number)];
+}
+function isCorrectSpokenEquation(text, question) {
+  const source = normalizeSpeechText(text);
+  const opWords = question.operation === "addition" ? ["たす", "ぷらす", "+"] : ["ひく", "まいなす", "−", "-"];
+  const equalsWords = ["", "は", "わ", "いこーる", "="];
+  return spokenNumberVariants(question.a).some((a) => opWords.some((op) => spokenNumberVariants(question.b).some((b) => equalsWords.some((joiner) => spokenNumberVariants(answerOf(question)).some((answer) => source === `${a}${op}${b}${joiner}${answer}`)))));
 }
 function updateMicButton() {
   const button = $("#mic-button");
@@ -287,9 +311,12 @@ function initialiseSpeech() {
   recognition = new SpeechRecognition(); recognition.lang = "ja-JP"; recognition.continuous = true; recognition.interimResults = false; recognition.maxAlternatives = 1;
   recognition.onresult = (event) => {
     const spoken = event.results[event.results.length - 1][0].transcript;
-    const number = parseSpokenNumber(spoken);
-    if (number !== null) $("#answer-input").value = String(number);
-    else $("#voice-hint").textContent = "すうじだけを いってみてね";
+    if (settings.voiceMode === "equation") $("#answer-input").value = spoken.trim();
+    else {
+      const number = parseSpokenNumber(spoken);
+      if (number !== null) $("#answer-input").value = String(number);
+      else $("#voice-hint").textContent = "すうじだけを いってみてね";
+    }
   };
   recognition.onend = () => {
     if (isListening && game && !game.isSubmitting) { setTimeout(() => { try { recognition.start(); } catch (_) {} }, 120); }
@@ -315,6 +342,7 @@ function openStartSettings(mode) {
   $("#settings-title").textContent = cards ? "けいさんカード" : "もんだいの せってい";
   $("#settings-description").textContent = cards ? "63まいの たしざんカードを、さいごまで やってみよう" : "もんだいを えらんでから はじめよう";
   ["#operation-settings", "#range-settings", "#count-settings"].forEach((selector) => { $(selector).hidden = cards; });
+  $("#voice-mode-settings").hidden = cards;
   $("#card-play-settings").hidden = !cards;
   $("#save-settings").textContent = "スタート";
   $("#settings-dialog").showModal();
@@ -326,6 +354,7 @@ $("#settings-button").addEventListener("click", () => {
   $("#settings-description").textContent = "つぎの れんしゅうから つかえるよ";
   ["#operation-settings", "#range-settings", "#count-settings"].forEach((selector) => { $(selector).hidden = false; });
   $("#card-play-settings").hidden = true;
+  $("#voice-mode-settings").hidden = false;
   $("#save-settings").textContent = "せっていを ほぞん";
   $("#settings-dialog").showModal();
 });
@@ -336,6 +365,7 @@ $("#settings-form").addEventListener("submit", (event) => {
   settings.range = document.querySelector('input[name="range"]:checked').value;
   settings.questionCount = Number(document.querySelector('input[name="questionCount"]:checked').value);
   settings.cardPlayMode = document.querySelector('input[name="cardPlayMode"]:checked').value;
+  settings.voiceMode = document.querySelector('input[name="voiceMode"]:checked').value;
   const mode = pendingMode; pendingMode = null;
   if (mode) setTimeout(() => setupGame(mode), 0);
 });
