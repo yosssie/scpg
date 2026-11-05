@@ -1,5 +1,5 @@
 const $ = (selector) => document.querySelector(selector);
-const settings = { operations: ["addition", "subtraction"], range: "single", questionCount: 10, cardPlayMode: "solo", voiceMode: "answer" };
+const settings = { operations: ["addition", "subtraction"], range: "single", questionCount: 10, cardPlayMode: "solo", voiceMode: "answer", cardSet: "たしざん①" };
 const operationInfo = {
   addition: { symbol: "+", calculate: (a, b) => a + b },
   subtraction: { symbol: "−", calculate: (a, b) => a - b },
@@ -12,6 +12,8 @@ let recognition = null;
 let isListening = false;
 let pendingMode = null;
 let shootingStarTimer = null;
+let cardTable = [];
+let cardTableLoadPromise = null;
 const LEARNING_STATS_KEY = "scpg-learning-stats";
 function todayKey() {
   const now = new Date();
@@ -70,17 +72,63 @@ function createQuestion(operation) {
 function answerOf(question) { return operationInfo[question.operation].calculate(question.a, question.b); }
 function questionText(question) { return `${question.a} ${operationInfo[question.operation].symbol} ${question.b}`; }
 function setupGame(mode) {
-  const questions = mode === "cards" ? createCards() : Array.from({ length: settings.questionCount }, () => createQuestion(settings.operations[randomInt(0, settings.operations.length - 1)]));
+  const questions = mode === "cards" ? createCards(settings.cardSet) : Array.from({ length: settings.questionCount }, () => createQuestion(settings.operations[randomInt(0, settings.operations.length - 1)]));
   questions.forEach((question, index) => { question.id = index; });
   game = { mode, originalMode: mode, cardPlayMode: settings.cardPlayMode, sessionId: `${Date.now()}-${Math.random()}`, firstCorrect: undefined, questions, index: 0, answers: [], startedAt: Date.now(), wrongAttempts: 0, streak: 0, isSubmitting: false, awaitingNext: false };
   $("#game-message").textContent = cardMessage() ?? (mode === "test" ? "さいごまで がんばろう！" : "こたえを いれてね");
   showScreen("#game-screen"); renderQuestion();
 }
-function createCards() {
-  const cards = [];
-  for (let a = 1; a <= 9; a += 1) for (let b = 1; b <= 10 - a; b += 1) cards.push({ a, b, operation: "addition" });
-  for (let b = 1; b <= 9; b += 1) cards.push({ a: 0, b, operation: "addition" });
-  for (let a = 1; a <= 9; a += 1) cards.push({ a, b: 0, operation: "addition" });
+function parseCardTable(csvText) {
+  const lines = csvText.replace(/^\uFEFF/, "").trim().split(/\r?\n/);
+  const headers = lines.shift().split(",").map((value) => value.trim());
+  const columns = Object.fromEntries(headers.map((name, index) => [name, index]));
+  if (["order", "set", "a", "operation", "b"].some((name) => columns[name] === undefined)) throw new Error("CSVの見出しに order,set,a,operation,b が必要です。");
+  const rows = lines.filter((line) => line.trim()).map((line) => {
+    const cells = line.split(",").map((value) => value.trim());
+    const order = Number(cells[columns.order]), a = Number(cells[columns.a]), b = Number(cells[columns.b]);
+    const operator = cells[columns.operation];
+    if (!Number.isInteger(order) || !cells[columns.set] || !Number.isInteger(a) || !Number.isInteger(b) || !["+", "-"].includes(operator)) throw new Error(`CSVの行を読み取れません: ${line}`);
+    return { order, set: cells[columns.set], a, b, operation: operator === "+" ? "addition" : "subtraction" };
+  });
+  if (!rows.length) throw new Error("CSVにカードの行がありません。");
+  for (const setName of ["たしざん①", "ひきざん①", "たしざん②", "ひきざん②"]) {
+    if (!rows.some((row) => row.set === setName)) throw new Error(`CSVに${setName}のカードがありません。`);
+  }
+  return rows;
+}
+function readSelectedCardTableFile() {
+  const input = $("#card-table-file");
+  return new Promise((resolve, reject) => {
+    input.value = "";
+    input.onchange = async () => {
+      if (!input.files?.[0]) { reject(new Error("CSVファイルが選ばれていません。")); return; }
+      try { resolve(parseCardTable(await input.files[0].text())); } catch (error) { reject(error); }
+    };
+    input.oncancel = () => reject(new Error("カードCSVの読み込みをキャンセルしました。"));
+    input.click();
+  });
+}
+async function loadCardTable() {
+  if (cardTable.length) return cardTable;
+  if (!cardTableLoadPromise) {
+    cardTableLoadPromise = (async () => {
+      try {
+        if (location.protocol === "file:") return await readSelectedCardTableFile();
+        const response = await fetch("table.csv");
+        if (!response.ok) throw new Error(`table.csvを読み込めませんでした (${response.status})`);
+        return parseCardTable(await response.text());
+      } catch (error) {
+        if (location.protocol === "file:") throw error;
+        return await readSelectedCardTableFile();
+      }
+    })();
+  }
+  try { cardTable = await cardTableLoadPromise; return cardTable; }
+  catch (error) { cardTableLoadPromise = null; throw error; }
+}
+function createCards(setName) {
+  const cards = cardTable.filter((card) => card.set === setName).sort((left, right) => left.order - right.order).map(({ a, b, operation }) => ({ a, b, operation }));
+  if (!cards.length) throw new Error(`${setName}のカードがtable.csvにありません。`);
   return cards;
 }
 function setAnswerLocked(locked) {
@@ -101,7 +149,6 @@ function renderQuestion() {
   const adultCards = game.mode === "cards" && game.cardPlayMode === "adult";
   $("#answer-form").hidden = adultCards;
   $(".number-keypad").hidden = settings.voiceMode === "equation" && !adultCards;
-  $(".number-keypad").hidden = settings.voiceMode === "equation" && !adultCards;
   $("#card-judge-controls").hidden = !adultCards;
   $("#voice-hint").hidden = adultCards;
   setAnswerLocked(false);
@@ -111,7 +158,7 @@ function renderQuestion() {
 }
 function cardMessage() {
   if (game?.mode !== "cards") return null;
-  return game.cardPlayMode === "adult" ? "こえに だして こたえよう。おとなの ひとが ○か×を おしてね" : "せいかいするまで、つぎのカードには すすまないよ";
+  return game.cardPlayMode === "adult" ? `${settings.cardSet}。こえに だして こたえよう。おとなの ひとが ○か×を おしてね` : `${settings.cardSet}。せいかいするまで、つぎのカードには すすまないよ`;
 }
 function judgeCard(isCorrect) {
   if (!game || game.mode !== "cards" || game.cardPlayMode !== "adult" || game.isSubmitting) return;
@@ -336,13 +383,18 @@ document.querySelector(".number-keypad").addEventListener("click", (event) => {
   else if (button.dataset.numberKey && input.value.length < 2) input.value += button.dataset.numberKey;
   input.focus();
 }); $("#home-button").addEventListener("click", () => showScreen("#home-screen")); $("#home-link").addEventListener("click", (event) => { event.preventDefault(); showScreen("#home-screen"); }); $("#quit-button").addEventListener("click", () => showScreen("#home-screen"));
-function openStartSettings(mode) {
+async function openStartSettings(mode) {
   pendingMode = mode;
   const cards = mode === "cards";
+  if (cards) {
+    try { await loadCardTable(); }
+    catch (error) { pendingMode = null; alert(`カードのCSVを読み込めませんでした。\n${error.message}`); return; }
+  }
   $("#settings-title").textContent = cards ? "けいさんカード" : "もんだいの せってい";
-  $("#settings-description").textContent = cards ? "63まいの たしざんカードを、さいごまで やってみよう" : "もんだいを えらんでから はじめよう";
+  $("#settings-description").textContent = cards ? "カードの しゅるいを えらんで、さいごまで やってみよう" : "もんだいを えらんでから はじめよう";
   ["#operation-settings", "#range-settings", "#count-settings"].forEach((selector) => { $(selector).hidden = cards; });
   $("#voice-mode-settings").hidden = cards;
+  $("#card-set-settings").hidden = !cards;
   $("#card-play-settings").hidden = !cards;
   $("#save-settings").textContent = "スタート";
   $("#settings-dialog").showModal();
@@ -355,6 +407,7 @@ $("#settings-button").addEventListener("click", () => {
   ["#operation-settings", "#range-settings", "#count-settings"].forEach((selector) => { $(selector).hidden = false; });
   $("#card-play-settings").hidden = true;
   $("#voice-mode-settings").hidden = false;
+  $("#card-set-settings").hidden = true;
   $("#save-settings").textContent = "せっていを ほぞん";
   $("#settings-dialog").showModal();
 });
@@ -366,6 +419,7 @@ $("#settings-form").addEventListener("submit", (event) => {
   settings.questionCount = Number(document.querySelector('input[name="questionCount"]:checked').value);
   settings.cardPlayMode = document.querySelector('input[name="cardPlayMode"]:checked').value;
   settings.voiceMode = document.querySelector('input[name="voiceMode"]:checked').value;
+  settings.cardSet = document.querySelector('input[name="cardSet"]:checked').value;
   const mode = pendingMode; pendingMode = null;
   if (mode) setTimeout(() => setupGame(mode), 0);
 });
