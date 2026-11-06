@@ -1,5 +1,5 @@
 const $ = (selector) => document.querySelector(selector);
-const settings = { operations: ["addition", "subtraction"], range: "single", questionCount: 10, cardPlayMode: "solo", voiceMode: "answer", cardSet: "たしざん①" };
+const settings = { operations: ["addition", "subtraction"], range: "single", questionCount: 10, cardPlayMode: "solo", voiceMode: "answer", cardSet: "たしざん①", cardOrder: "sequential" };
 const operationInfo = {
   addition: { symbol: "+", calculate: (a, b) => a + b },
   subtraction: { symbol: "−", calculate: (a, b) => a - b },
@@ -132,6 +132,12 @@ async function loadCardTable() {
 function createCards(setName) {
   const cards = cardTable.filter((card) => card.set === setName).sort((left, right) => left.order - right.order).map(({ a, b, operation }) => ({ a, b, operation }));
   if (!cards.length) throw new Error(`${setName}のカードがtable.csvにありません。`);
+  if (settings.cardOrder === "random") {
+    for (let index = cards.length - 1; index > 0; index -= 1) {
+      const swapIndex = randomInt(0, index);
+      [cards[index], cards[swapIndex]] = [cards[swapIndex], cards[index]];
+    }
+  }
   return cards;
 }
 function setAnswerLocked(locked) {
@@ -420,6 +426,7 @@ async function openStartSettings(mode) {
   ["#operation-settings", "#range-settings", "#count-settings"].forEach((selector) => { $(selector).hidden = cards; });
   $("#voice-mode-settings").hidden = cards;
   $("#card-set-settings").hidden = !cards;
+  $("#card-order-settings").hidden = !cards;
   $("#card-play-settings").hidden = !cards;
   $("#save-settings").textContent = "スタート";
   $("#settings-dialog").showModal();
@@ -433,6 +440,7 @@ $("#settings-button").addEventListener("click", () => {
   $("#card-play-settings").hidden = true;
   $("#voice-mode-settings").hidden = false;
   $("#card-set-settings").hidden = true;
+  $("#card-order-settings").hidden = true;
   $("#save-settings").textContent = "せっていを ほぞん";
   $("#settings-dialog").showModal();
 });
@@ -445,6 +453,7 @@ $("#settings-form").addEventListener("submit", (event) => {
   settings.cardPlayMode = document.querySelector('input[name="cardPlayMode"]:checked').value;
   settings.voiceMode = document.querySelector('input[name="voiceMode"]:checked').value;
   settings.cardSet = document.querySelector('input[name="cardSet"]:checked').value;
+  settings.cardOrder = document.querySelector('input[name="cardOrder"]:checked').value;
   const mode = pendingMode; pendingMode = null;
   if (mode) setTimeout(() => setupGame(mode), 0);
 });
