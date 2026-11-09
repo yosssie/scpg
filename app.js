@@ -10,6 +10,8 @@ const operationInfo = {
 let game = null;
 let recognition = null;
 let isListening = false;
+let speechResultReceived = false;
+let speechFeedback = null;
 let pendingMode = null;
 let shootingStarTimer = null;
 let cardTable = [];
@@ -152,6 +154,7 @@ function setAnswerLocked(locked) {
 }
 function renderQuestion() {
   const question = game.questions[game.index];
+  speechFeedback = null;
   $("#question").textContent = `${questionText(question)} =`;
   $("#progress-label").textContent = game.mode === "cards" ? `${game.index + 1} / ${game.questions.length} まい` : `${game.index + 1} / ${game.questions.length} もん`;
   $("#card-timer").hidden = game.mode !== "cards";
@@ -368,7 +371,7 @@ function updateMicButton() {
   const button = $("#mic-button");
   button.classList.toggle("listening", isListening);
   button.setAttribute("aria-label", isListening ? "おんせいにんしきをとめる" : "おんせいにんしきをはじめる");
-  $("#voice-hint").textContent = isListening ? "おんせいにんしきちゅう。もういちどおすと おわるよ" : "まいくをおして こえでこたえられるよ";
+  $("#voice-hint").textContent = isListening ? "おんせいにんしきちゅう。はなしおわると じどうではいるよ" : (speechFeedback ?? "まいくをおして こえでこたえられるよ");
 }
 function stopListening() {
   if (!recognition || !isListening) return;
@@ -379,6 +382,8 @@ function stopListening() {
 function startListening() {
   if (!recognition || !game || game.isSubmitting) return;
   $("#answer-input").value = "";
+  speechResultReceived = false;
+  speechFeedback = null;
   isListening = true;
   updateMicButton();
   try { recognition.start(); } catch (_) { /* 直前の終了処理中なら、次の操作で再開する。 */ }
@@ -386,21 +391,30 @@ function startListening() {
 function initialiseSpeech() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) { $("#mic-button").hidden = true; $("#voice-hint").textContent = "すうじをにゅうりょくしてこたえよう"; return; }
-  recognition = new SpeechRecognition(); recognition.lang = "ja-JP"; recognition.continuous = true; recognition.interimResults = false; recognition.maxAlternatives = 1;
+  recognition = new SpeechRecognition(); recognition.lang = "ja-JP"; recognition.continuous = false; recognition.interimResults = false; recognition.maxAlternatives = 1;
   recognition.onresult = (event) => {
     const spoken = event.results[event.results.length - 1][0].transcript;
+    speechResultReceived = true;
     if (settings.voiceMode === "equation") $("#answer-input").value = spoken.trim();
     else {
       const number = parseSpokenNumber(spoken);
       if (number !== null) $("#answer-input").value = String(number);
-      else $("#voice-hint").textContent = "すうじだけを いってみてね";
+      else speechFeedback = "すうじだけを いってみてね";
     }
+    updateMicButton();
   };
   recognition.onend = () => {
-    if (isListening && game && !game.isSubmitting) { setTimeout(() => { try { recognition.start(); } catch (_) {} }, 120); }
-    else { isListening = false; updateMicButton(); }
+    if (!speechResultReceived && !speechFeedback) speechFeedback = "声が聞こえなかったよ。もう一度どうぞ";
+    isListening = false;
+    updateMicButton();
   };
-  recognition.onerror = () => { $("#voice-hint").textContent = "こえをききとれなかったよ。もういちどどうぞ"; };
+  recognition.onspeechend = () => { if (isListening) recognition.stop(); };
+  recognition.onerror = (event) => {
+    if (event.error === "no-speech") speechFeedback = "声が聞こえなかったよ。もう一度どうぞ";
+    else if (event.error !== "aborted") speechFeedback = "こえをききとれなかったよ。もういちどどうぞ";
+    isListening = false;
+    updateMicButton();
+  };
   $("#mic-button").addEventListener("click", () => { if (isListening) stopListening(); else startListening(); });
   updateMicButton();
 }
@@ -412,7 +426,7 @@ document.querySelector(".number-keypad").addEventListener("click", (event) => {
   const input = $("#answer-input");
   if (button.dataset.numberDelete) input.value = input.value.slice(0, -1);
   else if (button.dataset.numberKey && input.value.length < 2) input.value += button.dataset.numberKey;
-  input.focus();
+  input.blur();
 }); $("#home-button").addEventListener("click", () => showScreen("#home-screen")); $("#home-link").addEventListener("click", (event) => { event.preventDefault(); showScreen("#home-screen"); }); $("#quit-button").addEventListener("click", () => showScreen("#home-screen"));
 async function openStartSettings(mode) {
   pendingMode = mode;
