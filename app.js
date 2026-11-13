@@ -1,5 +1,5 @@
 const $ = (selector) => document.querySelector(selector);
-const settings = { operations: ["addition", "subtraction"], range: "single", questionCount: 10, cardPlayMode: "solo", voiceMode: "answer", cardSet: "たしざん①", cardOrder: "sequential" };
+const settings = { operations: ["addition", "subtraction"], range: "single", questionCount: 10, cardPlayMode: "solo", voiceMode: "answer", cardSet: "たしざん①", cardOrder: "sequential", showCardTimer: localStorage.getItem("scpg-show-card-timer") === "true" };
 const operationInfo = {
   addition: { symbol: "+", calculate: (a, b) => a + b },
   subtraction: { symbol: "−", calculate: (a, b) => a - b },
@@ -157,7 +157,7 @@ function renderQuestion() {
   speechFeedback = null;
   $("#question").textContent = `${questionText(question)} =`;
   $("#progress-label").textContent = game.mode === "cards" ? `${game.index + 1} / ${game.questions.length} まい` : `${game.index + 1} / ${game.questions.length} もん`;
-  $("#card-timer").hidden = game.mode !== "cards";
+  $("#card-timer").hidden = game.mode !== "cards" || !settings.showCardTimer;
   $("#progress-fill").style.width = `${(game.index / game.questions.length) * 100}%`;
   const adultCards = game.mode === "cards" && game.cardPlayMode === "adult";
   $("#answer-form").hidden = adultCards;
@@ -442,6 +442,8 @@ async function openStartSettings(mode) {
   $("#card-set-settings").hidden = !cards;
   $("#card-order-settings").hidden = !cards;
   $("#card-play-settings").hidden = !cards;
+  $("#card-timer-settings").hidden = !cards;
+  $("#show-card-timer").checked = settings.showCardTimer;
   $("#save-settings").textContent = "スタート";
   $("#settings-dialog").showModal();
 }
@@ -452,6 +454,7 @@ $("#settings-button").addEventListener("click", () => {
   $("#settings-description").textContent = "つぎの れんしゅうから つかえるよ";
   ["#operation-settings", "#range-settings", "#count-settings"].forEach((selector) => { $(selector).hidden = false; });
   $("#card-play-settings").hidden = true;
+  $("#card-timer-settings").hidden = true;
   $("#voice-mode-settings").hidden = false;
   $("#card-set-settings").hidden = true;
   $("#card-order-settings").hidden = true;
@@ -468,6 +471,8 @@ $("#settings-form").addEventListener("submit", (event) => {
   settings.voiceMode = document.querySelector('input[name="voiceMode"]:checked').value;
   settings.cardSet = document.querySelector('input[name="cardSet"]:checked').value;
   settings.cardOrder = document.querySelector('input[name="cardOrder"]:checked').value;
+  settings.showCardTimer = $("#show-card-timer").checked;
+  localStorage.setItem("scpg-show-card-timer", String(settings.showCardTimer));
   const mode = pendingMode; pendingMode = null;
   if (mode) setTimeout(() => setupGame(mode), 0);
 });
